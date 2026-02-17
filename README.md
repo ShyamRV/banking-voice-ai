@@ -1,4 +1,4 @@
-![BankVoiceAI Architecture](architecture.png)
+![BankVoiceAI Architecture](Project Architecture.png)
 # BankVoiceAI — AI Call Executive Platform
 
 **Replacing Human Call Executives with AI Agents**
