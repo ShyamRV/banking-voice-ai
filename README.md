@@ -1,4 +1,3 @@
-![BankVoiceAI Architecture](Project Architecture.png)
 # BankVoiceAI — AI Call Executive Platform
 
 **Replacing Human Call Executives with AI Agents**
@@ -10,6 +9,8 @@
 [![Open Source](https://img.shields.io/badge/Open%20Source-❤️-red?style=flat-square)]()
 
 > **An intelligent AI agent platform that handles customer calls autonomously using Fetch.ai's multi-agent system and ASI:ONE's conversational AI. Built for banks, hospitals, e-commerce, insurance, telecom, real estate, and ed-tech.**
+
+![BankVoiceAI Architecture](./Project%20Architecture.png)
 
 ---
 
