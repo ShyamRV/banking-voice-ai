@@ -1,0 +1,1 @@
+![BankVoiceAI Architecture](architecture.png)
