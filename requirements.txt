@@ -1,0 +1,21 @@
+# Core Agent Framework
+uagents>=0.23.0
+
+# Speech Recognition
+openai-whisper
+
+# Text to Speech (Windows compatible fork)
+coqui-tts
+
+# HTTP Requests
+requests
+
+# Environment Variables
+python-dotenv
+
+# Web Server
+flask
+
+# Audio Processing
+pydub
+
