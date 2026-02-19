@@ -1,0 +1,13 @@
+{
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:active": true,
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:tier": "starter",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:limit": 5000,
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:used": 0,
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:overage_fee": "1.0",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:access_level": "limited",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:features": "whatsapp_text,whatsapp_voice_messages,basic_queries,general_info_only",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:expiry": "2026-03-21T16:23:05.702182+00:00",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:payment_tx": "test_tx_09ed83a2df224ec4",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:amount_paid": "3000",
+    "subscription:agent1qguhmswpvppm3lmrsxs40x38x2ruk3uclkkh3tr0es8jrzuw2wzmzg4m4y0:activated_at": "2026-02-19T16:23:05.706741+00:00"
+}

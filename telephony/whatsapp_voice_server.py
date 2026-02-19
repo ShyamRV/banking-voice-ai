@@ -27,7 +27,27 @@ BANK_NAME = os.getenv("BANK_NAME", "XYZ Bank")
 TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "+14155238886")
 sessions = {}
 
+from twilio.twiml.voice_response import VoiceResponse, Gather
 
+@app.post("/voice/incoming")
+async def voice_incoming(request: Request):
+    form = await request.form()
+    response = VoiceResponse()
+    gather = Gather(input="speech", action="/voice/respond", timeout=3)
+    gather.say("Welcome to BankVoiceAI. How can I help you today?")
+    response.append(gather)
+    return Response(content=str(response), media_type="application/xml")
+
+@app.post("/voice/respond")
+async def voice_respond(request: Request):
+    form = await request.form()
+    speech = form.get("SpeechResult", "")
+    ai_reply = asi_client.chat(speech, [])
+    response = VoiceResponse()
+    response.say(ai_reply)
+    response.redirect("/voice/incoming")
+    return Response(content=str(response), media_type="application/xml")
+    
 @app.post("/whatsapp/message")
 async def whatsapp_message(request: Request):
     form = await request.form()
