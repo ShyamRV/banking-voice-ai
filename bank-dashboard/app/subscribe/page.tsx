@@ -1,188 +1,272 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
-import { Shield, Check, ArrowRight, Wallet, Loader2, CheckCircle2, Clock } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { pricingTiers } from "@/lib/mock-data"
+import { toast } from "sonner"
+import { Check } from "lucide-react"
 
-type PaymentStatus = "idle" | "pending" | "verified" | "activated"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003"
+
+const TIERS = [
+  {
+    id: "starter",
+    name: "Starter",
+    price_usd: 1500,
+    price_fet: 5000,
+    calls: "5,000",
+    agents: ["BankVoiceAI Core"],
+    features: ["AI chat & voice", "Basic analytics", "Email support", "FDIC compliant"],
+  },
+  {
+    id: "professional",
+    name: "Professional",
+    price_usd: 3000,
+    price_fet: 10000,
+    calls: "15,000",
+    agents: ["Core", "WhatsApp", "Voice Calls"],
+    features: ["All Starter features", "WhatsApp Business", "Real phone calls", "Priority support", "Custom prompts"],
+    highlighted: true,
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    price_usd: 6000,
+    price_fet: 20000,
+    calls: "40,000",
+    agents: ["Core", "WhatsApp", "Voice", "Compliance", "Fraud"],
+    features: ["All Professional", "Compliance monitoring", "Fraud detection", "Dedicated manager", "Custom SLA", "On-premise option"],
+  },
+]
 
 export default function SubscribePage() {
+  const router = useRouter()
+  const [selectedTier, setSelectedTier] = useState("professional")
+  const [step, setStep] = useState<"select" | "details" | "payment">("select")
+  const [bankName, setBankName] = useState("")
   const [walletAddress, setWalletAddress] = useState("")
-  const [selectedTier, setSelectedTier] = useState<string>("Professional")
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle")
+  const [contactEmail, setContactEmail] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [paymentInstructions, setPaymentInstructions] = useState<any>(null)
 
-  const handlePayment = () => {
-    if (!walletAddress) return
-    setPaymentStatus("pending")
-    setTimeout(() => setPaymentStatus("verified"), 2000)
-    setTimeout(() => setPaymentStatus("activated"), 4000)
+  const tier = TIERS.find(t => t.id === selectedTier)!
+
+  const handleSubscribe = async () => {
+    if (!bankName || !walletAddress || !contactEmail) {
+      toast.error("Please fill all fields")
+      return
+    }
+    if (!walletAddress.startsWith("fetch1")) {
+      toast.error("Invalid FET wallet address")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet_address: walletAddress,
+          tier: selectedTier,
+          bank_name: bankName,
+          contact_email: contactEmail,
+        }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error("Subscription failed", { description: data.detail })
+        return
+      }
+
+      setPaymentInstructions(data.payment_instructions)
+      setStep("payment")
+      toast.success("Almost there! Complete payment to activate.")
+    } catch (e) {
+      toast.error("Connection error")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Shield className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="text-base font-semibold text-foreground">BankVoiceAI</span>
-          </Link>
-          <Button asChild variant="outline" size="sm" className="border-border text-foreground hover:bg-secondary">
-            <Link href="/dashboard">Skip to Dashboard</Link>
-          </Button>
-        </div>
-      </header>
+  const checkPaymentStatus = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/subscription/${walletAddress}`)
+      const data = await res.json()
 
-      <div className="mx-auto max-w-5xl px-6 py-16">
-        <div className="mb-12 text-center">
-          <h1 className="mb-3 text-3xl font-bold text-foreground lg:text-4xl text-balance">
-            Subscribe to BankVoiceAI
-          </h1>
-          <p className="text-muted-foreground text-pretty">
-            Connect your FET wallet, select a plan, and activate your AI banking agents.
+      if (data.active) {
+        toast.success("Payment confirmed! Redirecting to dashboard...")
+        localStorage.setItem("bva_wallet", walletAddress)
+        setTimeout(() => router.push("/login"), 1500)
+      } else {
+        toast.error("Payment not detected yet", {
+          description: "Please ensure you sent the exact FET amount. It may take 1-2 minutes.",
+        })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 1: Select Tier ──────────────────────────────────────────────────
+
+  if (step === "select") return (
+    <div className="min-h-screen bg-background py-16 px-4">
+      <div className="max-w-5xl mx-auto space-y-10">
+        <div className="text-center space-y-3">
+          <Badge className="bg-primary/10 text-primary border-0">US Banks Only</Badge>
+          <h1 className="text-4xl font-bold">Replace Your Call Center with AI</h1>
+          <p className="text-muted-foreground text-lg">Save $2–20M/year. Works 24/7. Answers in seconds.</p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {TIERS.map((t) => (
+            <div
+              key={t.id}
+              onClick={() => setSelectedTier(t.id)}
+              className={cn(
+                "rounded-2xl border p-6 cursor-pointer transition-all space-y-5",
+                selectedTier === t.id ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40",
+                t.highlighted && selectedTier !== t.id && "border-primary/30"
+              )}
+            >
+              {t.highlighted && (
+                <Badge className="bg-primary text-primary-foreground border-0 text-xs">Most Popular</Badge>
+              )}
+              <div>
+                <h2 className="text-xl font-bold">{t.name}</h2>
+                <div className="mt-2">
+                  <span className="text-3xl font-bold">${t.price_usd.toLocaleString()}</span>
+                  <span className="text-muted-foreground text-sm">/month</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{t.price_fet.toLocaleString()} FET · {t.calls} calls</p>
+              </div>
+
+              <ul className="space-y-2">
+                {t.features.map(f => (
+                  <li key={f} className="flex items-center gap-2 text-sm">
+                    <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                className="w-full"
+                variant={selectedTier === t.id ? "default" : "outline"}
+                onClick={() => { setSelectedTier(t.id); setStep("details") }}
+              >
+                {selectedTier === t.id ? "Selected" : "Select"}
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Powered by Fetch.ai blockchain · Payments in FET · Cancel anytime
+        </p>
+      </div>
+    </div>
+  )
+
+  // ── Step 2: Bank Details ─────────────────────────────────────────────────
+
+  if (step === "details") return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6">
+        <div>
+          <h2 className="text-xl font-bold">Bank Details</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Setting up <span className="text-primary font-medium">{tier.name}</span> — {tier.price_fet.toLocaleString()} FET/month
           </p>
         </div>
 
-        {/* Step 1: Wallet */}
-        <div className="mb-8 rounded-xl border border-border bg-card p-6">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-              1
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">Connect FET Wallet</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Bank Name</label>
+            <Input
+              placeholder="First National Bank"
+              value={bankName}
+              onChange={e => setBankName(e.target.value)}
+            />
           </div>
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Wallet className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={walletAddress}
-                onChange={(e) => setWalletAddress(e.target.value)}
-                placeholder="fetch1mnu8eq5kzr3v..."
-                className="bg-secondary border-border pl-10 font-mono text-sm"
-              />
-            </div>
-            <Button
-              variant="outline"
-              className="border-border text-foreground hover:bg-secondary"
-              onClick={() => setWalletAddress("fetch1mnu8eq5kzr3v" + Math.random().toString(36).slice(2, 8))}
-            >
-              Generate Test Wallet
-            </Button>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Contact Email</label>
+            <Input
+              type="email"
+              placeholder="admin@yourbank.com"
+              value={contactEmail}
+              onChange={e => setContactEmail(e.target.value)}
+            />
           </div>
-        </div>
-
-        {/* Step 2: Select tier */}
-        <div className="mb-8 rounded-xl border border-border bg-card p-6">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-              2
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">Select Plan</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {pricingTiers.map((tier) => (
-              <button
-                key={tier.name}
-                onClick={() => setSelectedTier(tier.name)}
-                className={cn(
-                  "flex flex-col rounded-lg border p-5 text-left transition-all",
-                  selectedTier === tier.name
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border bg-secondary hover:border-primary/30"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">{tier.name}</span>
-                  {selectedTier === tier.name && (
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                  )}
-                </div>
-                <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-foreground">${tier.price}</span>
-                  <span className="text-sm text-muted-foreground">/mo</span>
-                </div>
-                <span className="mt-1 text-xs text-muted-foreground">~{tier.fetPrice} FET</span>
-                <ul className="mt-4 space-y-2">
-                  {tier.features.slice(0, 4).map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <Check className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </button>
-            ))}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">FET Wallet Address</label>
+            <Input
+              placeholder="fetch1..."
+              value={walletAddress}
+              onChange={e => setWalletAddress(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Get a FET wallet at <a href="https://fetch.ai/get-fetch-wallet" className="text-primary underline" target="_blank">fetch.ai</a>
+            </p>
           </div>
         </div>
 
-        {/* Step 3: Payment */}
-        <div className="rounded-xl border border-border bg-card p-6">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-              3
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">Complete Payment</h2>
-          </div>
-
-          {paymentStatus === "idle" && (
-            <Button
-              onClick={handlePayment}
-              disabled={!walletAddress}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8"
-            >
-              Pay with FET
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          )}
-
-          {paymentStatus !== "idle" && (
-            <div className="space-y-4">
-              {(["pending", "verified", "activated"] as PaymentStatus[]).map((step) => {
-                const isComplete = (
-                  step === "pending" ? ["verified", "activated"].includes(paymentStatus) :
-                  step === "verified" ? paymentStatus === "activated" :
-                  false
-                )
-                const isCurrent = paymentStatus === step
-                return (
-                  <div key={step} className="flex items-center gap-3">
-                    {isComplete ? (
-                      <CheckCircle2 className="h-5 w-5 text-success" />
-                    ) : isCurrent ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground" />
-                    )}
-                    <span className={cn(
-                      "text-sm font-medium",
-                      isComplete ? "text-success" : isCurrent ? "text-primary" : "text-muted-foreground"
-                    )}>
-                      {step === "pending" && "Processing payment via payment_proto..."}
-                      {step === "verified" && "Verifying transaction on Fetch.ai network..."}
-                      {step === "activated" && "Subscription activated!"}
-                    </span>
-                    {isComplete && <Badge className="bg-success/15 text-success border-0 text-[10px]">Done</Badge>}
-                  </div>
-                )
-              })}
-
-              {paymentStatus === "activated" && (
-                <Button asChild className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90">
-                  <Link href="/dashboard">
-                    Go to Dashboard
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              )}
-            </div>
-          )}
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={() => setStep("select")}>Back</Button>
+          <Button className="flex-1" onClick={handleSubscribe} disabled={loading}>
+            {loading ? "Setting up..." : "Continue to Payment"}
+          </Button>
         </div>
+      </div>
+    </div>
+  )
+
+  // ── Step 3: Payment Instructions ─────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 space-y-6">
+        <div className="text-center">
+          <div className="text-4xl mb-3">💸</div>
+          <h2 className="text-xl font-bold">Complete Payment</h2>
+          <p className="text-sm text-muted-foreground mt-1">Send FET to activate your subscription</p>
+        </div>
+
+        <div className="rounded-xl bg-muted/50 p-4 space-y-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Send to wallet:</span>
+            <span className="font-mono text-xs truncate max-w-[160px]">{paymentInstructions?.send_to_wallet}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Amount:</span>
+            <span className="font-bold text-primary">{paymentInstructions?.amount_fet?.toLocaleString()} FET</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Memo:</span>
+            <span className="font-mono text-xs">{paymentInstructions?.memo}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3 text-sm text-muted-foreground bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
+          <p className="font-medium text-yellow-600">⚠️ Important</p>
+          <p>Include the memo exactly as shown so we can identify your payment.</p>
+          <p>Payment is processed on the Fetch.ai blockchain. Activation takes 1–2 minutes.</p>
+        </div>
+
+        <Button className="w-full" onClick={checkPaymentStatus} disabled={loading}>
+          {loading ? "Checking..." : "I've Sent the Payment — Activate Now"}
+        </Button>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Need help? Email us at <a href="mailto:shyamjipandey211105@gmail.com" className="text-primary">shyamjipandey211105@gmail.com</a>
+        </p>
       </div>
     </div>
   )

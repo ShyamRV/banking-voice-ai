@@ -1,39 +1,71 @@
 /**
- * BankVoiceAI API Client
- * Replace mock-data imports with these real API calls
- * Place this file at: lib/api.ts
+ * BankVoiceAI API Client - Production Version
+ * All calls include JWT auth token.
+ * Place at: bank-dashboard/lib/api.ts
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003"
 
-// ─── TYPES (same as mock-data.ts) ─────────────────────────────────────────────
+// ─── AUTH HELPERS ──────────────────────────────────────────────────────────────
 
-export type AgentStatus = "active" | "inactive" | "degraded"
+function getToken(): string {
+  if (typeof window === "undefined") return ""
+  return localStorage.getItem("bva_token") || ""
+}
+
+function authHeaders(): HeadersInit {
+  const token = getToken()
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
+
+async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers || {}) },
+    cache: "no-store",
+  })
+
+  if (res.status === 401) {
+    // Token expired — redirect to login
+    if (typeof window !== "undefined") {
+      localStorage.clear()
+      window.location.href = "/login"
+    }
+    throw new Error("Unauthorized")
+  }
+
+  return res.json()
+}
+
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+
+export type AgentStatus = "active" | "inactive" | "degraded" | "locked"
 
 export interface Agent {
   id: string
   name: string
   address: string
-  fetchAddress: string
+  description: string
   status: AgentStatus
   calls_today: number
   uptime: number
   last_active: string
   tier_required: string
   health_score: number
-  description: string
+  accessible: boolean
 }
 
 export interface Subscription {
-  tier: "starter" | "professional" | "enterprise"
+  active: boolean
+  tier: string
   bank_name: string
   calls_used: number
   calls_limit: number
-  expiry: string
-  fet_wallet: string
   active_agents: number
-  cost_saved: number
-  active: boolean
+  onboarded: string
 }
 
 export interface LogEntry {
@@ -47,124 +79,130 @@ export interface LogEntry {
 
 export interface Stats {
   total_calls_today: number
+  total_calls_month: number
   active_agents: number
   total_agents: number
   avg_uptime: number
-  cost_saved_inr: number
-  calls_this_month: number
+  cost_saved_usd: number
+  calls_limit: number
 }
 
-// ─── AGENT NAMES & DESCRIPTIONS ───────────────────────────────────────────────
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 
-const agentMeta: Record<string, { name: string; description: string; tier_required: string; fetchAddress: string }> = {
-  core: {
-    name: "BankVoiceAI Core",
-    description: "Primary AI banking agent handling core query routing and response generation",
-    tier_required: "starter",
-    fetchAddress: "fetch1mnusswylz6smcx59jtvem2vyxruw6mjkhppyph",
-  },
-  whatsapp: {
-    name: "WhatsApp Agent",
-    description: "Handles WhatsApp Business API interactions and message routing",
-    tier_required: "professional",
-    fetchAddress: "fetch1_whatsapp_address",
-  },
-  voice: {
-    name: "Voice Call Agent",
-    description: "Manages Twilio voice calls with real-time speech-to-text and TTS",
-    tier_required: "professional",
-    fetchAddress: "fetch1_voice_address",
-  },
-  compliance: {
-    name: "Compliance Agent",
-    description: "RBI compliance monitoring and regulatory adherence verification",
-    tier_required: "enterprise",
-    fetchAddress: "fetch1_compliance_address",
-  },
-  fraud: {
-    name: "Fraud Detection Agent",
-    description: "Real-time fraud detection using ML models on transaction patterns",
-    tier_required: "enterprise",
-    fetchAddress: "fetch1_fraud_address",
-  },
+export async function loginWithWallet(walletAddress: string): Promise<{
+  token: string
+  bank_name: string
+  tier: string
+  bank_id: string
+}> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wallet_address: walletAddress }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || "Login failed")
+  }
+  return res.json()
 }
 
-// ─── API FUNCTIONS ─────────────────────────────────────────────────────────────
+export function logout() {
+  localStorage.clear()
+  window.location.href = "/login"
+}
+
+export function isLoggedIn(): boolean {
+  return !!getToken()
+}
+
+export function getBankName(): string {
+  return localStorage.getItem("bva_bank_name") || "Your Bank"
+}
+
+export function getTier(): string {
+  return localStorage.getItem("bva_tier") || "starter"
+}
+
+// ─── AGENTS ───────────────────────────────────────────────────────────────────
 
 export async function getAgents(): Promise<Agent[]> {
-  const res = await fetch(`${API_BASE}/api/agents`, { cache: "no-store" })
-  const data = await res.json()
-  return data.map((a: any) => ({
-    ...a,
-    ...agentMeta[a.id],
-    last_active: new Date(a.last_active).toLocaleTimeString(),
-  }))
+  return apiFetch("/api/agents")
+}
+
+export async function startAgent(agentId: string): Promise<{ success: boolean }> {
+  return apiFetch(`/api/agent/${agentId}/start`, { method: "POST" })
+}
+
+export async function stopAgent(agentId: string): Promise<{ success: boolean }> {
+  return apiFetch(`/api/agent/${agentId}/stop`, { method: "POST" })
+}
+
+// ─── STATS ────────────────────────────────────────────────────────────────────
+
+export async function getStats(): Promise<Stats> {
+  return apiFetch("/api/stats")
 }
 
 export async function getSubscription(walletAddress: string): Promise<Subscription> {
-  const res = await fetch(`${API_BASE}/api/subscription/${walletAddress}`, { cache: "no-store" })
-  return res.json()
+  return apiFetch(`/api/subscription/${walletAddress}`)
 }
 
-export async function getStats(): Promise<Stats> {
-  const res = await fetch(`${API_BASE}/api/stats`, { cache: "no-store" })
-  return res.json()
-}
+// ─── LOGS ─────────────────────────────────────────────────────────────────────
 
 export async function getLogs(agentId?: string, level?: string): Promise<LogEntry[]> {
   const params = new URLSearchParams()
   if (agentId && agentId !== "all") params.set("agent_id", agentId)
   if (level && level !== "all") params.set("level", level)
-  const res = await fetch(`${API_BASE}/api/logs?${params}`, { cache: "no-store" })
-  return res.json()
+  return apiFetch(`/api/logs?${params}`)
 }
-
-export async function startAgent(agentId: string): Promise<{ success: boolean }> {
-  const res = await fetch(`${API_BASE}/api/agent/${agentId}/start`, { method: "POST" })
-  return res.json()
-}
-
-export async function stopAgent(agentId: string): Promise<{ success: boolean }> {
-  const res = await fetch(`${API_BASE}/api/agent/${agentId}/stop`, { method: "POST" })
-  return res.json()
-}
-
-export async function requestPayment(tier: string, walletAddress: string) {
-  const res = await fetch(`${API_BASE}/api/payment/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tier, wallet_address: walletAddress }),
-  })
-  return res.json()
-}
-
-// ─── WEBSOCKET FOR LIVE LOGS ──────────────────────────────────────────────────
 
 export function createLogStream(
   onLog: (log: LogEntry) => void,
   onError?: (e: Event) => void
 ): () => void {
-  const ws = new WebSocket(`${API_BASE.replace("http", "ws")}/ws/logs`)
+  const token = getToken()
+  const wsUrl = `${API_BASE.replace("http", "ws")}/ws/logs?token=${token}`
+  const ws = new WebSocket(wsUrl)
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data)
     if (data.type === "ping") return
     onLog(data as LogEntry)
   }
-
   ws.onerror = (e) => {
     console.error("Log stream error:", e)
     onError?.(e)
   }
 
-  // Return cleanup function
   return () => ws.close()
 }
 
-// ─── POLLING HOOK HELPER ──────────────────────────────────────────────────────
+// ─── SUBSCRIBE ────────────────────────────────────────────────────────────────
 
-export function startPolling(fn: () => void, intervalMs: number = 30000): () => void {
-  fn() // call immediately
+export async function subscribeTier(
+  walletAddress: string,
+  tier: string,
+  bankName: string,
+  contactEmail: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/subscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      tier,
+      bank_name: bankName,
+      contact_email: contactEmail,
+    }),
+  })
+  return res.json()
+}
+
+// ─── POLLING HELPER ───────────────────────────────────────────────────────────
+
+export function startPolling(fn: () => void, intervalMs = 30000): () => void {
+  fn()
   const id = setInterval(fn, intervalMs)
   return () => clearInterval(id)
 }
