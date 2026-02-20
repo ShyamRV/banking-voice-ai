@@ -2,4 +2,4 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python telephony/whatsapp_voice_server.py"
+startCommand = "uvicorn api.dashboard_api:app --host 0.0.0.0 --port $PORT"
