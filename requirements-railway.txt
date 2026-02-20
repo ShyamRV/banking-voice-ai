@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-dotenv
+uagents
+uagents-core
+cosmpy
+twilio
+python-multipart
+requests
