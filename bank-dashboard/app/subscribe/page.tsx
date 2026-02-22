@@ -100,10 +100,24 @@ export default function SubscribePage() {
       const data = await res.json()
 
       if (data.active) {
-        toast.success("Payment confirmed! Redirecting to dashboard...")
+        toast.success("Payment confirmed! Setting up your dashboard...")
+  // Auto login immediately
+        const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet_address: walletAddress }),
+        })
+        const loginData = await loginRes.json()
+        localStorage.setItem("bva_token", loginData.token)
+        localStorage.setItem("bva_bank_name", loginData.bank_name)
+        localStorage.setItem("bva_tier", loginData.tier)
         localStorage.setItem("bva_wallet", walletAddress)
-        setTimeout(() => router.push("/login"), 1500)
-      } else {
+        localStorage.setItem("token", loginData.token)
+        localStorage.setItem("bank_name", loginData.bank_name)
+        localStorage.setItem("tier", loginData.tier)
+        setTimeout(() => router.push("/dashboard"), 1500)
+      }
+        else {
         toast.error("Payment not detected yet", {
           description: "Please ensure you sent the exact FET amount. It may take 1-2 minutes.",
         })
