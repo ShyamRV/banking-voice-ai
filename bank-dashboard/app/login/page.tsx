@@ -37,6 +37,9 @@ export default function LoginPage() {
       localStorage.setItem("bva_bank_name", data.bank_name)
       localStorage.setItem("bva_tier", data.tier)
       localStorage.setItem("bva_wallet", wallet)
+      localStorage.setItem("token", data.token)
+      localStorage.setItem("bank_name", data.bank_name)
+      localStorage.setItem("tier", data.tier)
 
       toast.success(`Welcome, ${data.bank_name}!`)
       router.push("/dashboard")
