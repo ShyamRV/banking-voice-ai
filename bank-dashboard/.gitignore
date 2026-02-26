@@ -11,3 +11,23 @@ node_modules/
 .vercel
 
 .vercel
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# Agents
+agents/venv/
+agents/__pycache__/
+agents/.env
+backend/venv/
+backend/__pycache__/
+agents/venv/
+agents/__pycache__/

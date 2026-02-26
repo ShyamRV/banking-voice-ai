@@ -124,7 +124,7 @@ export function AgentGrid() {
       const data = await getAgents()
       setAgents(data)
     } catch (e) {
-      toast.error("Failed to fetch agents", { description: "Cannot reach Railway API server" })
+      toast.error("Failed to fetch agents", { description: "Is the API server running on port 8003?" })
     } finally {
       setLoading(false)
     }

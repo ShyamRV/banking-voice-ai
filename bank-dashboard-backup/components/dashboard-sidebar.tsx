@@ -10,7 +10,6 @@ import {
   Settings,
   Zap,
   Shield,
-  Wallet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -18,7 +17,6 @@ import { Badge } from "@/components/ui/badge"
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/agents", label: "Agent Control", icon: Bot },
-  { href: "/dashboard/payments", label: "Payments", icon: Wallet },
   { href: "/dashboard/logs", label: "Live Logs", icon: ScrollText },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
