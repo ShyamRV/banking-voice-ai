@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd bank-dashboard && npm run build",
-  "outputDirectory": "bank-dashboard/.next",
-  "installCommand": "cd bank-dashboard && npm install",
-  "devCommand": "cd bank-dashboard && npm run dev"
-}
