@@ -1,31 +1,31 @@
 # FastAPI Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
 python-multipart==0.0.6
 
 # Database
-sqlalchemy==2.0.23
+sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
-alembic==1.12.1
+alembic==1.13.1
 
 # Authentication
-pyjwt==2.8.0
+pyjwt==2.9.0
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 
 # Data Validation
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.9.0
+pydantic-settings==2.5.2
 
 # HTTP Client
-httpx==0.25.1
-aiohttp==3.9.1
+httpx==0.27.0
+aiohttp==3.10.5
 
 # Redis
-redis==5.0.1
+redis==5.0.8
 
 # Environment Variables
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 
 # Logging
 python-json-logger==2.0.7
