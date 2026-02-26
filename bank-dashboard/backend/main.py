@@ -1,80 +1,100 @@
-# backend/main.py
-"""
-Main FastAPI application for Payment System
-"""
+import os
+import uuid
+import logging
+from datetime import datetime, timedelta
+from typing import Optional, List
+from enum import Enum
+
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
-from datetime import datetime, timedelta
-from enum import Enum
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
 import jwt
-import uuid
+from passlib.context import CryptContext
+import httpx
 
-# Initialize FastAPI app
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ── Settings ─────────────────────────────────────────────────────────────────
+class Settings(BaseSettings):
+    app_env: str = "development"
+    jwt_secret: str = "your-super-secret-jwt-key-change-in-production"
+    jwt_expire_hours: int = 24
+    cors_origins: str = "*"
+    fetch_network: str = "testnet"
+    fetch_chain_id: str = "dorado-1"
+    fetch_rpc_url: str = "https://rpc-dorado.fetch.ai:443"
+
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
+
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="Payment System API",
-    description="Backend API for Banking Voice AI Payment System",
-    version="1.0.0"
+    title="Banking Voice AI - Payment API",
+    description="Blockchain payment system for Banking Voice AI",
+    version="2.0.0",
 )
 
-# CORS Middleware
+origins = [o.strip() for o in settings.cors_origins.split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Security
-security = HTTPBearer()
+# ── Security ──────────────────────────────────────────────────────────────────
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+bearer_scheme = HTTPBearer(auto_error=False)
 
-# ===== ENUMS =====
+# ── In-Memory Store (replaces DB for now) ────────────────────────────────────
+users_db: dict = {}          # email -> user dict
+transactions_db: dict = {}   # tx_id -> tx dict
 
+
+# ── Enums & Models ────────────────────────────────────────────────────────────
 class SubscriptionTier(str, Enum):
-    BASIC = "1500"
-    PREMIUM = "3000"
-    ENTERPRISE = "6000"
+    tier_1500 = "1500"
+    tier_3000 = "3000"
+    tier_6000 = "6000"
 
 class TransactionStatus(str, Enum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
 
-class PaymentEventType(str, Enum):
-    REQUEST = "REQUESTPAYMENT"
-    COMMIT = "COMPLETEPAYMENT"
-    CANCEL = "CANCELPAYMENT"
-
-# ===== PYDANTIC MODELS =====
 
 class UserRegister(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=8)
-    bank_credentials: dict
+    email: str
+    password: str
+    bank_credentials: dict = {}
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
-
-class SubscriptionRequest(BaseModel):
-    tier: SubscriptionTier
 
 class PaymentRequest(BaseModel):
     recipient_address: str
     amount: float = Field(..., gt=0)
-    subscription_tier: SubscriptionTier
+    subscription_tier: Optional[SubscriptionTier] = SubscriptionTier.tier_3000
 
-class PaymentCommit(BaseModel):
+class CommitPayment(BaseModel):
     transaction_id: str
     transaction_hash: str
 
-class PaymentCancel(BaseModel):
-    transaction_id: str
-    reason: Optional[str] = None
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
 
 class TransactionResponse(BaseModel):
     id: str
@@ -83,382 +103,167 @@ class TransactionResponse(BaseModel):
     sender_address: str
     recipient_address: str
     amount: float
-    status: TransactionStatus
-    created_at: datetime
-    completed_at: Optional[datetime]
+    status: str
+    created_at: str
+    completed_at: Optional[str]
 
-class DashboardStats(BaseModel):
-    total_transactions: int
-    completed_transactions: int
-    pending_transactions: int
-    total_volume: float
-    success_rate: float
 
-# ===== AUTH ROUTES =====
+# ── Auth Helpers ─────────────────────────────────────────────────────────────
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
 
-@app.post("/api/v1/auth/register", status_code=status.HTTP_201_CREATED)
-async def register_user(user_data: UserRegister):
-    """
-    Register a new user with email and bank credentials
-    """
-    try:
-        # TODO: Implement user registration logic
-        # 1. Hash password
-        # 2. Verify bank credentials
-        # 3. Create wallet address
-        # 4. Store in database
-        
-        user_id = str(uuid.uuid4())
-        
-        return {
-            "message": "User registered successfully",
-            "user_id": user_id,
-            "email": user_data.email
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Registration failed: {str(e)}"
-        )
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
 
-@app.post("/api/v1/auth/login")
-async def login_user(login_data: UserLogin):
-    """
-    Authenticate user and return JWT token
-    """
-    try:
-        # TODO: Implement authentication logic
-        # 1. Verify credentials
-        # 2. Generate JWT token
-        # 3. Return token and user data
-        
-        # Placeholder token generation
-        token = jwt.encode(
-            {
-                "user_id": str(uuid.uuid4()),
-                "email": login_data.email,
-                "exp": datetime.utcnow() + timedelta(hours=24)
-            },
-            "your-secret-key",  # Use env variable
-            algorithm="HS256"
-        )
-        
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "expires_in": 86400
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
-        )
-
-@app.post("/api/v1/auth/verify-bank-credentials")
-async def verify_bank_credentials(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Verify user's bank credentials with banking system
-    """
-    try:
-        # TODO: Implement bank credential verification
-        # 1. Connect to banking API
-        # 2. Verify credentials
-        # 3. Update user status
-        
-        return {
-            "verified": True,
-            "message": "Bank credentials verified successfully"
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Verification failed: {str(e)}"
-        )
-
-@app.get("/api/v1/auth/profile")
-async def get_user_profile(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Get current user profile
-    """
-    try:
-        # TODO: Decode JWT and fetch user profile
-        return {
-            "user_id": "sample-id",
-            "email": "user@example.com",
-            "subscription_tier": SubscriptionTier.BASIC,
-            "wallet_address": "fetch1...",
-            "bank_verified": True
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
-
-# ===== SUBSCRIPTION ROUTES =====
-
-@app.get("/api/v1/subscriptions/plans")
-async def get_subscription_plans():
-    """
-    Get available subscription plans
-    """
-    return {
-        "plans": [
-            {
-                "tier": SubscriptionTier.BASIC,
-                "price": 1500,
-                "features": ["Basic features", "100 transactions/month"]
-            },
-            {
-                "tier": SubscriptionTier.PREMIUM,
-                "price": 3000,
-                "features": ["Premium features", "500 transactions/month"]
-            },
-            {
-                "tier": SubscriptionTier.ENTERPRISE,
-                "price": 6000,
-                "features": ["All features", "Unlimited transactions"]
-            }
-        ]
+def create_token(user_id: str, email: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(hours=settings.jwt_expire_hours),
     }
+    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
-@app.post("/api/v1/subscriptions/subscribe")
-async def subscribe_to_plan(
-    subscription_data: SubscriptionRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Subscribe user to a plan
-    """
+def decode_token(token: str) -> dict:
     try:
-        # TODO: Implement subscription logic
-        # 1. Verify user authentication
-        # 2. Process payment
-        # 3. Activate subscription
-        
-        return {
-            "message": "Subscription activated",
-            "tier": subscription_data.tier,
-            "status": "active"
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Subscription failed: {str(e)}"
-        )
+        return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.get("/api/v1/subscriptions/current")
-async def get_current_subscription(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Get user's current subscription
-    """
-    try:
-        # TODO: Fetch current subscription from database
-        return {
-            "tier": SubscriptionTier.PREMIUM,
-            "status": "active",
-            "start_date": datetime.utcnow().isoformat(),
-            "auto_renew": True
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active subscription"
-        )
+def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authorization required")
+    payload = decode_token(credentials.credentials)
+    user_id = payload.get("user_id")
+    email = payload.get("email")
+    if not user_id or email not in users_db:
+        raise HTTPException(status_code=401, detail="User not found")
+    return users_db[email]
 
-# ===== PAYMENT ROUTES =====
 
-@app.post("/api/v1/payments/request", response_model=TransactionResponse)
-async def request_payment(
-    payment_data: PaymentRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Create a payment request (REQUESTPAYMENT)
-    """
-    try:
-        # TODO: Implement payment request logic
-        # 1. Verify user authentication
-        # 2. Create transaction record
-        # 3. Send to uAgents protocol
-        
-        transaction_id = str(uuid.uuid4())
-        
-        return TransactionResponse(
-            id=transaction_id,
-            user_id="sample-user-id",
-            transaction_hash=None,
-            sender_address="fetch1sender...",
-            recipient_address=payment_data.recipient_address,
-            amount=payment_data.amount,
-            status=TransactionStatus.PENDING,
-            created_at=datetime.utcnow(),
-            completed_at=None
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment request failed: {str(e)}"
-        )
-
-@app.post("/api/v1/payments/commit")
-async def commit_payment(
-    commit_data: PaymentCommit,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Commit a payment (COMPLETEPAYMENT)
-    """
-    try:
-        # TODO: Implement payment commit logic
-        # 1. Verify transaction on blockchain
-        # 2. Update transaction status
-        # 3. Trigger success callback
-        
-        return {
-            "message": "Payment committed successfully",
-            "transaction_id": commit_data.transaction_id,
-            "transaction_hash": commit_data.transaction_hash,
-            "status": TransactionStatus.COMPLETED
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment commit failed: {str(e)}"
-        )
-
-@app.post("/api/v1/payments/cancel")
-async def cancel_payment(
-    cancel_data: PaymentCancel,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Cancel a payment (CANCELPAYMENT)
-    """
-    try:
-        # TODO: Implement payment cancellation logic
-        # 1. Verify transaction exists
-        # 2. Update status to cancelled
-        # 3. Trigger cancellation callback
-        
-        return {
-            "message": "Payment cancelled",
-            "transaction_id": cancel_data.transaction_id,
-            "status": TransactionStatus.CANCELLED
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment cancellation failed: {str(e)}"
-        )
-
-@app.get("/api/v1/payments/{transaction_id}", response_model=TransactionResponse)
-async def get_payment_details(
-    transaction_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Get details of a specific payment
-    """
-    try:
-        # TODO: Fetch transaction from database
-        return TransactionResponse(
-            id=transaction_id,
-            user_id="sample-user-id",
-            transaction_hash="0x123...",
-            sender_address="fetch1sender...",
-            recipient_address="fetch1recipient...",
-            amount=1000.0,
-            status=TransactionStatus.COMPLETED,
-            created_at=datetime.utcnow(),
-            completed_at=datetime.utcnow()
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Transaction not found"
-        )
-
-@app.get("/api/v1/payments/history", response_model=List[TransactionResponse])
-async def get_payment_history(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    limit: int = 10,
-    offset: int = 0
-):
-    """
-    Get user's payment history
-    """
-    try:
-        # TODO: Fetch transactions from database with pagination
-        return []
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch payment history"
-        )
-
-# ===== DASHBOARD ROUTES =====
-
-@app.get("/api/v1/dashboard/stats", response_model=DashboardStats)
-async def get_dashboard_stats(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Get dashboard statistics
-    """
-    try:
-        # TODO: Calculate statistics from database
-        return DashboardStats(
-            total_transactions=100,
-            completed_transactions=85,
-            pending_transactions=10,
-            total_volume=150000.0,
-            success_rate=0.85
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch statistics"
-        )
-
-@app.get("/api/v1/dashboard/transactions")
-async def get_dashboard_transactions(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    days: int = 7
-):
-    """
-    Get recent transactions for dashboard
-    """
-    try:
-        # TODO: Fetch recent transactions
-        return {
-            "transactions": [],
-            "period": f"Last {days} days"
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch transactions"
-        )
-
-# ===== HEALTH CHECK =====
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-async def health_check():
-    """
-    Health check endpoint
-    """
+def health():
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "service": "payment-system-api"}
+
+@app.get("/")
+def root():
+    return {"message": "Banking Voice AI Payment API", "version": "2.0.0", "docs": "/docs"}
+
+
+# Auth
+@app.post("/api/v1/auth/register", response_model=TokenResponse)
+def register(data: UserRegister):
+    if data.email in users_db:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_id = str(uuid.uuid4())
+    users_db[data.email] = {
+        "id": user_id,
+        "email": data.email,
+        "password": hash_password(data.password),
+        "bank_credentials": data.bank_credentials,
+        "created_at": datetime.utcnow().isoformat(),
+        "subscription_tier": "3000",
+    }
+    token = create_token(user_id, data.email)
+    return TokenResponse(access_token=token, expires_in=settings.jwt_expire_hours * 3600)
+
+@app.post("/api/v1/auth/login", response_model=TokenResponse)
+def login(data: UserLogin):
+    user = users_db.get(data.email)
+    if not user or not verify_password(data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token(user["id"], data.email)
+    return TokenResponse(access_token=token, expires_in=settings.jwt_expire_hours * 3600)
+
+
+# Payments
+@app.post("/api/v1/payments/request", response_model=TransactionResponse)
+def request_payment(data: PaymentRequest, user: dict = Depends(get_current_user)):
+    tx_id = str(uuid.uuid4())
+    tx = {
+        "id": tx_id,
+        "user_id": user["id"],
+        "transaction_hash": None,
+        "sender_address": f"fetch1{user['id'][:8]}...",
+        "recipient_address": data.recipient_address,
+        "amount": data.amount,
+        "status": TransactionStatus.pending,
+        "subscription_tier": data.subscription_tier,
+        "created_at": datetime.utcnow().isoformat(),
+        "completed_at": None,
+    }
+    transactions_db[tx_id] = tx
+    logger.info(f"Payment requested: {tx_id} for {data.amount} FET")
+    return TransactionResponse(**tx)
+
+@app.post("/api/v1/payments/commit", response_model=TransactionResponse)
+def commit_payment(data: CommitPayment, user: dict = Depends(get_current_user)):
+    tx = transactions_db.get(data.transaction_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    tx["transaction_hash"] = data.transaction_hash
+    tx["status"] = TransactionStatus.completed
+    tx["completed_at"] = datetime.utcnow().isoformat()
+    logger.info(f"Payment committed: {data.transaction_id}")
+    return TransactionResponse(**tx)
+
+@app.post("/api/v1/payments/cancel/{transaction_id}", response_model=TransactionResponse)
+def cancel_payment(transaction_id: str, user: dict = Depends(get_current_user)):
+    tx = transactions_db.get(transaction_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    tx["status"] = TransactionStatus.cancelled
+    return TransactionResponse(**tx)
+
+@app.get("/api/v1/payments/history", response_model=List[TransactionResponse])
+def payment_history(limit: int = 50, offset: int = 0, user: dict = Depends(get_current_user)):
+    user_txs = [tx for tx in transactions_db.values() if tx["user_id"] == user["id"]]
+    user_txs.sort(key=lambda x: x["created_at"], reverse=True)
+    return [TransactionResponse(**tx) for tx in user_txs[offset: offset + limit]]
+
+@app.get("/api/v1/payments/{transaction_id}", response_model=TransactionResponse)
+def get_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
+    tx = transactions_db.get(transaction_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return TransactionResponse(**tx)
+
+
+# Dashboard stats
+@app.get("/api/v1/dashboard/stats")
+def dashboard_stats(user: dict = Depends(get_current_user)):
+    user_txs = [tx for tx in transactions_db.values() if tx["user_id"] == user["id"]]
+    total = len(user_txs)
+    completed = sum(1 for tx in user_txs if tx["status"] == TransactionStatus.completed)
+    pending = sum(1 for tx in user_txs if tx["status"] == TransactionStatus.pending)
+    failed = sum(1 for tx in user_txs if tx["status"] == TransactionStatus.failed)
+    volume = sum(tx["amount"] for tx in user_txs if tx["status"] == TransactionStatus.completed)
     return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "total_transactions": total,
+        "completed": completed,
+        "pending": pending,
+        "failed": failed,
+        "total_volume": round(volume, 2),
+        "success_rate": round((completed / total * 100) if total > 0 else 0, 1),
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# Subscriptions
+@app.get("/api/v1/subscriptions")
+def get_subscriptions(user: dict = Depends(get_current_user)):
+    return {
+        "current_tier": user.get("subscription_tier", "3000"),
+        "available_tiers": [
+            {"id": "1500", "name": "Starter", "price": 1500, "features": ["Basic payments", "100 tx/month"]},
+            {"id": "3000", "name": "Professional", "price": 3000, "features": ["Advanced payments", "500 tx/month", "Priority support"]},
+            {"id": "6000", "name": "Enterprise", "price": 6000, "features": ["Unlimited payments", "Unlimited tx", "Dedicated support", "Custom integrations"]},
+        ]
+    }
